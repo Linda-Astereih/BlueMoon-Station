@@ -297,6 +297,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 "custom_deathgasp" = "застывает и падает без сил, глаза мертвы и безжизненны...", // BLUEMOON ADD - пользовательский эмоут смерти
 "custom_deathsound" = "По умолчанию", // BLUEMOON ADD - пользовательский эмоут смерти
 "ooc_notes" = "",
+"ass_photo" = "",
 "meat_type" = "Mammalian",
 "body_model" = MALE,
 "body_size" = RESIZE_DEFAULT_SIZE,
@@ -383,6 +384,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 	var/ambientocclusion = TRUE
 	var/lighting_blur = LIGHTING_BLUR_DEFAULT
+	var/multiz_performance = MULTIZ_PERFORMANCE_DISABLE
+	var/multiz_parallax = TRUE
 	var/lighting_brightness = LIGHTING_BRIGHTNESS_DEFAULT
 	var/lighting_lamp_brightness = LIGHTING_LAMP_BRIGHTNESS_DEFAULT
 	var/lighting_bloom_intensity = LIGHTING_BLOOM_INTENSITY_DEFAULT
@@ -629,6 +632,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 	// ссылку на префы - живой хендлер превращает наш снос в харддел.
 	QDEL_NULL(offer)
 	QDEL_NULL(loadout_color_handler)
+	QDEL_NULL(job_menu)
 	// GLOB.preferences_datums держит датум по ckey: удалённый, но не вычеркнутый оттуда
 	// датум ушёл бы в харддел, а следующий вход этого ckey получил бы труп.
 	for(var/registered_ckey in GLOB.preferences_datums)
@@ -1538,6 +1542,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 							dat += ooc_preview
 						else
 							dat += "[copytext_char(ooc_preview, 1, MAX_FLAVOR_PREVIEW_LEN)]..."
+						dat += get_ass_photo_markup()
 					dat += "</td>"
 
 					if(is_modern_theme)
@@ -1582,6 +1587,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 							dat += ooc_preview2
 						else
 							dat += "[copytext_char(ooc_preview2, 1, MAX_FLAVOR_PREVIEW_LEN)]..."
+						dat += get_ass_photo_markup()
 
 					if(is_modern_theme)
 						dat += "</td>"
@@ -2091,6 +2097,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 								dat += "<a style='display:block;width:50px' href='?_src_=prefs;preference=balls_fluid;task=input'>[balls_fluid.name]</a>"
 							else
 								dat += "<a style='display:block;width:50px' href='?_src_=prefs;preference=balls_fluid;task=input'>Nothing?</a>"
+							dat += "<b>Max Cum Output:</b><a style='display:block;width:50px' href='?_src_=prefs;preference=balls_cum_max;task=input'>[features["balls_cum_max"] ? features["balls_cum_max"] : "Default"]</a>"
+							dat += "<b>Fluid Restoration Rate:</b><a style='display:block;width:50px' href='?_src_=prefs;preference=balls_cum_rate;task=input'>[features["balls_cum_rate"] != CUM_RATE ? features["balls_cum_rate"] : "Default"]</a>"
 							//SPLURT Edit end
 
 						dat += "</td>"
@@ -2781,150 +2789,12 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 	popup.open(FALSE)
 	onclose(user, "capturekeypress", src)
 
-/datum/preferences/proc/SetChoices(mob/user, limit = 17, list/splitJobs = list("Research Director", "Head of Personnel"), widthPerColumn = 295, height = 620) // BLUEMOON CHANGES - splitjob
+/datum/preferences/proc/SetChoices(mob/user)
 	if(!SSjob)
 		return
 	if(!ismob(user) || !user.client?.prefs)
 		return
-
-	//limit - The amount of jobs allowed per column. Defaults to 17 to make it look nice.
-	//splitJobs - Allows you split the table by job. You can make different tables for each department by including their heads. Defaults to CE to make it look nice.
-	//widthPerColumn - Screen's width for every column.
-	//height - Screen's height.
-
-	var/width = widthPerColumn
-
-	var/HTML = "<center>"
-	if(SSjob.occupations.len <= 0)
-		HTML += "The job SSticker is not yet finished creating jobs, please try again later"
-		HTML += "<center><a href='?_src_=prefs;preference=job;task=close'>Done</a></center><br>" // Easier to press up here.
-
-	else
-		HTML += "<b>Choose occupation chances</b><br>"
-		HTML += "<div align='center'>Left-click to raise an occupation preference, right-click to lower it.<br></div>"
-		HTML += "<center><a href='?_src_=prefs;preference=job;task=close'>Done</a></center><br>" // Easier to press up here.
-		HTML += "<script type='text/javascript'>function setJobPrefRedirect(level, rank) { window.location.href='?_src_=prefs;preference=job;task=setJobLevel;level=' + level + ';text=' + encodeURIComponent(rank); return false; }</script>"
-		HTML += "<table width='100%' cellpadding='1' cellspacing='0'><tr><td width='20%'>" // Table within a table for alignment, also allows you to easily add more colomns.
-		HTML += "<table width='100%' cellpadding='1' cellspacing='0'>"
-		var/index = -1
-
-		//The job before the current job. I only use this to get the previous jobs color when I'm filling in blank rows.
-		var/datum/job/lastJob
-
-		for(var/datum/job/job in sort_list(SSjob.occupations, GLOBAL_PROC_REF(cmp_job_display_asc)))
-
-			index += 1
-			if((index >= limit) || (job.title in splitJobs))
-				width += widthPerColumn
-				if((index < limit) && (lastJob != null))
-					//If the cells were broken up by a job in the splitJob list then it will fill in the rest of the cells with
-					//the last job's selection color. Creating a rather nice effect.
-					for(var/i = 0, i < (limit - index), i += 1)
-						HTML += "<tr bgcolor='[lastJob.selection_color]'><td width='60%' align='right'>&nbsp</td><td>&nbsp</td></tr>"
-				HTML += "</table></td><td width='20%'><table width='100%' cellpadding='1' cellspacing='0'>"
-				index = 0
-
-			HTML += "<tr bgcolor='[job.selection_color]'><td width='60%' align='right'>"
-			var/rank = job.title
-			var/displayed_rank = rank
-			if(job.alt_titles.len && (rank in alt_titles_preferences))
-				displayed_rank = alt_titles_preferences[rank]
-			lastJob = job
-			if(jobban_isbanned(user, rank))
-				HTML += "<font color=\"#000000\">[rank]</font></td><td><a href='?_src_=prefs;bancheck=[rank]'> BANNED</a></td></tr>"
-				continue
-			var/required_playtime_remaining = job.required_playtime_remaining(user.client)
-			if(required_playtime_remaining)
-				HTML += "<font color=\"#000000\">[rank]</font></td><td><font color=\"#000000\"> \[ [get_exp_format(required_playtime_remaining)] as [job.get_exp_req_type()] \] </font></td></tr>"
-				continue
-			if(!job.player_old_enough(user.client))
-				var/available_in_days = job.available_in_days(user.client)
-				HTML += "<font color=\"#000000\">[rank]</font></td><td><font color=\"#000000\"> \[IN [(available_in_days)] DAYS\]</font></td></tr>"
-				continue
-			if(!user.client.prefs.pref_species.qualifies_for_rank(rank, user.client.prefs.features))
-				if(user.client.prefs.pref_species.id == "human")
-					HTML += "<font color=\"#000000\">[rank]</font></td><td><font color=\"#000000\"><b> \[MUTANT\]</b></font></td></tr>"
-				else
-					HTML += "<font color=\"#000000\">[rank]</font></td><td><font color=\"#000000\"><b> \[NON-HUMAN\]</b></font></td></tr>"
-				continue
-			//BLUE MOON ADDITION - XENO SUPREMACY - START
-			if(job.is_species_blacklisted(user.client))
-				HTML += "<font color=\"#000000\">[rank]</font></td><td><font color=\"#000000\"><b> \[SPECIES BLACKLISTED\]</b></font></td></tr>"
-				continue
-			//BLUE MOON ADDITION - XENO SUPREMACY - END
-			if((job_preferences["[SSjob.overflow_role]"] == JP_LOW) && (rank != SSjob.overflow_role) && !jobban_isbanned(user, SSjob.overflow_role))
-				HTML += "<font color=\"#000000\">[rank]</font></td><td></td></tr>"
-				continue
-			var/rank_title_line = "[displayed_rank]"
-			if((rank in GLOB.command_positions) || (rank == "AI"))//Bold head jobs
-				rank_title_line = "<b>[rank_title_line]</b>"
-			if(job.alt_titles.len)
-				rank_title_line = "<a href='?_src_=prefs;preference=job;task=alt_title;job_title=[job.title]'>[rank_title_line]</a>"
-
-			else
-				rank_title_line = "<span class='dark'>[rank_title_line]</span>" //Make it dark if we're not adding a button for alt titles
-			HTML += rank_title_line
-
-			HTML += "</td><td width='40%'>"
-
-			var/prefLevelLabel = "ERROR"
-			var/prefLevelColor = "pink"
-			var/prefUpperLevel = -1 // level to assign on left click
-			var/prefLowerLevel = -1 // level to assign on right click
-
-			switch(job_preferences["[job.title]"])
-				if(JP_HIGH)
-					prefLevelLabel = "High"
-					prefLevelColor = "slateblue"
-					prefUpperLevel = 4
-					prefLowerLevel = 2
-				if(JP_MEDIUM)
-					prefLevelLabel = "Medium"
-					prefLevelColor = "green"
-					prefUpperLevel = 1
-					prefLowerLevel = 3
-				if(JP_LOW)
-					prefLevelLabel = "Low"
-					prefLevelColor = "orange"
-					prefUpperLevel = 2
-					prefLowerLevel = 4
-				else
-					prefLevelLabel = "NEVER"
-					prefLevelColor = "red"
-					prefUpperLevel = 3
-					prefLowerLevel = 1
-
-			HTML += "<a class='white' href='?_src_=prefs;preference=job;task=setJobLevel;level=[prefUpperLevel];text=[rank]' oncontextmenu='javascript:return setJobPrefRedirect([prefLowerLevel], \"[rank]\");'>"
-
-			if(rank == SSjob.overflow_role)//Overflow is special
-				if(job_preferences["[SSjob.overflow_role]"] == JP_LOW)
-					HTML += "<font color=green>Yes</font>"
-				else
-					HTML += "<font color=red>No</font>"
-				HTML += "</a></td></tr>"
-				continue
-
-			HTML += "<font color=[prefLevelColor]>[prefLevelLabel]</font>"
-			HTML += "</a></td></tr>"
-
-		for(var/i = 1, i < (limit - index), i += 1) // Finish the column so it is even
-			HTML += "<tr bgcolor='[lastJob.selection_color]'><td width='60%' align='right'>&nbsp</td><td>&nbsp</td></tr>"
-
-		HTML += "</td'></tr></table>"
-		HTML += "</center></table>"
-
-		var/message = "Be an [SSjob.overflow_role] if preferences unavailable"
-		if(joblessrole == BERANDOMJOB)
-			message = "Get random job if preferences unavailable"
-		else if(joblessrole == RETURNTOLOBBY)
-			message = "Return to lobby if preferences unavailable"
-		HTML += "<center><br><a href='?_src_=prefs;preference=job;task=random'>[message]</a></center>"
-		HTML += "<center><a href='?_src_=prefs;preference=job;task=reset'>Reset Preferences</a></center>"
-
-	var/datum/browser/popup = new(user, "mob_occupation", "<div align='center'>Occupation Preferences</div>", width, height)
-	popup.set_window_options("can_close=0")
-	popup.set_content(HTML)
-	popup.open(FALSE)
+	open_job_menu(user) // думаем
 
 /datum/preferences/proc/SetJobPreferenceLevel(datum/job/job, level)
 	if (!job)
@@ -2939,42 +2809,6 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 	job_preferences["[job.title]"] = level
 	return TRUE
-
-/datum/preferences/proc/UpdateJobPreference(mob/user, role, desiredLvl)
-	if(!SSjob || SSjob.occupations.len <= 0)
-		return
-	var/datum/job/job = SSjob.GetJob(role)
-
-	if(!job)
-		user << browse(null, "window=mob_occupation")
-		ShowChoices(user)
-		return
-
-	if (!isnum(desiredLvl))
-		to_chat(user, "<span class='danger'>UpdateJobPreference - desired level was not a number. Please notify coders!</span>")
-		ShowChoices(user)
-		return
-
-	var/jpval = null
-	switch(desiredLvl)
-		if(3)
-			jpval = JP_LOW
-		if(2)
-			jpval = JP_MEDIUM
-		if(1)
-			jpval = JP_HIGH
-
-	if(role == SSjob.overflow_role)
-		if(job_preferences["[job.title]"] == JP_LOW)
-			jpval = null
-		else
-			jpval = JP_LOW
-
-	SetJobPreferenceLevel(job, jpval)
-	SetChoices(user)
-
-	return TRUE
-
 
 /datum/preferences/proc/ResetJobs()
 	job_preferences = list()
@@ -3248,6 +3082,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 			allowed_keys = list("_src_", "preference", "action")
 		if("headshot", "headshot_naked")
 			allowed_keys = list("_src_", "preference", "select_slot")
+		if("ass_photo")
+			allowed_keys = list("_src_", "preference", "clear")
 		if("security_records", "medical_records", "flavor_text", "naked_flavor_text", "silicon_flavor_text", "custom_species_lore", "ooc_notes", "format_help", "hide_ckey", "custom_deathgasp", "custom_deathsound", "deathsoundpreview", "laugh", "laughpreview", "speech_verb", "speech_verb_ru", "barksound", "barkspeed", "barkpitch", "barkvary")
 			if(href_list["task"] != "input")
 				return FALSE
@@ -3485,44 +3321,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 		return TRUE
 
 	if(href_list["preference"] == "job")
-		switch(href_list["task"])
-			if("close")
-				user << browse(null, "window=mob_occupation")
-				ShowChoices(user)
-			if("reset")
-				ResetJobs()
-				SetChoices(user)
-			if("random")
-				switch(joblessrole)
-					if(RETURNTOLOBBY)
-						if(jobban_isbanned(user, SSjob.overflow_role))
-							joblessrole = BERANDOMJOB
-						else
-							joblessrole = BEOVERFLOW
-					if(BEOVERFLOW)
-						joblessrole = BERANDOMJOB
-					if(BERANDOMJOB)
-						joblessrole = RETURNTOLOBBY
-				SetChoices(user)
-			if("setJobLevel")
-				UpdateJobPreference(user, href_list["text"], text2num(href_list["level"]))
-			if("alt_title")
-				var/job_title = href_list["job_title"]
-				var/titles_list = list(job_title)
-				var/datum/job/J = SSjob.GetJob(job_title)
-				for(var/i in J.alt_titles)
-					titles_list += i
-				var/chosen_title
-				chosen_title = tgui_input_list(user, "Choose your job's title:", "Job Preference", titles_list)
-				if(chosen_title)
-					if(chosen_title == job_title)
-						if(alt_titles_preferences[job_title])
-							alt_titles_preferences.Remove(job_title)
-					else
-						alt_titles_preferences[job_title] = chosen_title
-				SetChoices(user)
-			else
-				SetChoices(user)
+		SetChoices(user)
 		return TRUE
 
 	else if(href_list["preference"] == "trait")
@@ -3588,7 +3387,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 			if("lewd_summon_nickname")
 				var/client/C = usr.client
 				if(C)
-					var/new_summon_nickname = input(user, "Задайте прозвище во время призыва вашего персонажа:", "Character Preference")  as text|null
+					var/new_summon_nickname = tgui_input_text(user, "Задайте прозвище во время призыва вашего персонажа:", "Character Preference", summon_nickname, MAX_NAME_LEN)
 					if(new_summon_nickname)
 						new_summon_nickname = reject_bad_name(new_summon_nickname, allow_numbers = TRUE)
 						if(new_summon_nickname)
@@ -3603,7 +3402,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				var/list/phobia_choices = list("Случайная")
 				if(SStraumas && SStraumas.phobia_types)
 					phobia_choices += SStraumas.phobia_types
-				var/new_choice = input(user, "Выберите вашу фобию. Если не выберете - будет случайная.", "Настройка фобии") as null|anything in phobia_choices
+				var/new_choice = tgui_input_list(user, "Выберите вашу фобию. Если не выберете - будет случайная.", "Настройка фобии", phobia_choices)
 				if(new_choice)
 					if(new_choice == "Случайная")
 						phobia_type = null
@@ -3616,7 +3415,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 			if("change_onelife_option") // BLUEMOON ADD - форма рассыпания для Одной Жизни
 				var/client/C = usr.client
 				if(C)
-					var/new_form = input(user, "Выберите, во что ваш персонаж рассыплется после смерти.", "Настройка Одной Жизни") as null|anything in GLOB.onelife_death_forms
+					var/new_form = tgui_input_list(user, "Выберите, во что ваш персонаж рассыплется после смерти.", "Настройка Одной Жизни", GLOB.onelife_death_forms)
 					if(new_form)
 						onelife_death_type = new_form
 					if(is_inline_quirks)
@@ -3668,6 +3467,14 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 			i = text2num(i)
 		i = clamp(i, 1, MAX_HEADSHOTS_NAKED)
 		set_headshot_link(user, i, features["headshot_naked_links"])
+		ShowChoices(user, rebuild_preview = !preview_unchanged)
+		return TRUE
+
+	else if(href_list["preference"] == "ass_photo")
+		if(href_list["clear"])
+			features["ass_photo"] = ""
+		else
+			set_ass_photo_link(user)
 		ShowChoices(user, rebuild_preview = !preview_unchanged)
 		return TRUE
 
@@ -3754,7 +3561,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 							ghost_others = GHOST_OTHERS_SIMPLE
 
 				if("name")
-					var/new_name = input(user, "Задайте имя вашего персонажа:", "Character Preference")  as text|null
+					var/new_name = tgui_input_text(user, "Задайте имя вашего персонажа:", "Character Preference", real_name, MAX_NAME_LEN)
 					if(new_name)
 						new_name = reject_bad_name(new_name, allow_numbers = TRUE)
 						if(new_name)
@@ -3768,39 +3575,39 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						age = max(min( round(text2num(new_age)), AGE_MAX_INPUT),AGE_MIN)
 
 				if("security_records")
-					var/rec = stripped_multiline_input(usr, "Напишите заметки службы безопасности о вашем персонаже.", "Security Records", html_decode(security_records), MAX_FLAVOR_LEN, TRUE)
+					var/rec = tgui_input_text(usr, "Напишите заметки службы безопасности о вашем персонаже.", "Security Records", html_decode(security_records), MAX_FLAVOR_LEN, TRUE, TRUE)
 					if(!isnull(rec))
 						security_records = rec
 
 				if("medical_records")
-					var/rec = stripped_multiline_input(usr, "Напишите медицинские заметки о вашем персонаже.", "Medical Records", html_decode(medical_records), MAX_FLAVOR_LEN, TRUE)
+					var/rec = tgui_input_text(usr, "Напишите медицинские заметки о вашем персонаже.", "Medical Records", html_decode(medical_records), MAX_FLAVOR_LEN, TRUE, TRUE)
 					if(!isnull(rec))
 						medical_records = rec
 
 				if("flavor_text")
-					var/msg = input(usr, "Задайте внешнее описание вашего персонажа.\nПоддерживается форматирование:\n*курсив* _курсив_ !жирный! ^крупный^ |центр| ((мелкий))\n-=RRGGBB цветной текст =-  (например -=ff0000 красный=-)\n# Заголовок, ## Подзаголовок\nЭкранируйте спецсимволы обратным слешем \\* \\! \\_ и т.д.", "Описание Bнешности Персонажа", features["flavor_text"]) as message|null
+					var/msg = tgui_input_text(usr, "Задайте внешнее описание вашего персонажа.\nПоддерживается форматирование:\n*курсив* _курсив_ !жирный! ^крупный^ |центр| ((мелкий))\n-=RRGGBB цветной текст =-  (например -=ff0000 красный=-)\n# Заголовок, ## Подзаголовок\nЭкранируйте спецсимволы обратным слешем \\* \\! \\_ и т.д.", "Описание Bнешности Персонажа", features["flavor_text"], MAX_FLAVOR_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["flavor_text"] = copytext_char(msg, 1, MAX_FLAVOR_LEN)
 
 				//SPLURT edit
 				if("naked_flavor_text")
-					var/msg = input(usr, "Задайте описание вашего персонажа без одежды.\nПоддерживается форматирование:\n*курсив* !жирный! -=цвет=- и т.д.", "Описание Bнешности Голого Персонажа", features["naked_flavor_text"]) as message|null
+					var/msg = tgui_input_text(usr, "Задайте описание вашего персонажа без одежды.\nПоддерживается форматирование:\n*курсив* !жирный! -=цвет=- и т.д.", "Описание Bнешности Голого Персонажа", features["naked_flavor_text"], MAX_FLAVOR_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["naked_flavor_text"] = copytext_char(msg, 1, MAX_FLAVOR_LEN)
 
 				//SPLURT edit end
 				if("silicon_flavor_text")
-					var/msg = input(usr, "Задайте особые признаки внешности своего синтетического (борга) персонажа!\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "Описание Борга", features["silicon_flavor_text"]) as message|null
+					var/msg = tgui_input_text(usr, "Задайте особые признаки внешности своего синтетического (борга) персонажа!\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "Описание Борга", features["silicon_flavor_text"], MAX_FLAVOR_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["silicon_flavor_text"] = copytext_char(msg, 1, MAX_FLAVOR_LEN)
 
 				if("custom_species_lore")
-					var/msg = input(usr, "Задайте особую предысторию расы своего персонажа!\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "Предыстория Расы Bашего Персонажа", features["custom_species_lore"]) as message|null
+					var/msg = tgui_input_text(usr, "Задайте особую предысторию расы своего персонажа!\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "Предыстория Расы Bашего Персонажа", features["custom_species_lore"], MAX_FLAVOR_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["custom_species_lore"] = copytext_char(msg, 1, MAX_FLAVOR_LEN)
 				// BLUEMOON ADD START - пользовательский эмоут смерти
 				if("custom_deathgasp")
-					var/msg = input(usr, "Задайте эмоцию, которая будет проигрываться при смерти вашего персонажа!", "Сообщение О Смерти", features["custom_deathgasp"]) as message|null
+					var/msg = tgui_input_text(usr, "Задайте эмоцию, которая будет проигрываться при смерти вашего персонажа!", "Сообщение О Смерти", features["custom_deathgasp"], MAX_DEATHGASP_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["custom_deathgasp"] = strip_html_simple(msg, MAX_DEATHGASP_LEN, TRUE)
 				if("custom_deathsound")
@@ -3831,7 +3638,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						to_chat(user, "<span class='warning'>Вы выбрали беззвучный deathgasp или выбранный вами звук отсутствует!</span>")
 				// BLUEMOON ADD END
 				if("ooc_notes")
-					var/msg = input(usr, "Установите всегда видимые OOC-заметки, связанные с вашими предпочтениями.\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "ООС-Заметки", features["ooc_notes"]) as message|null
+					var/msg = tgui_input_text(usr, "Установите всегда видимые OOC-заметки, связанные с вашими предпочтениями.\nПоддерживается форматирование: *курсив* !жирный! -=цвет=-", "ООС-Заметки", features["ooc_notes"], MAX_FLAVOR_LEN, TRUE, FALSE)
 					if(!isnull(msg))
 						features["ooc_notes"] = copytext_char(msg, 1, MAX_FLAVOR_LEN)
 
@@ -3849,7 +3656,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 -=RRGGBB текст =- — цвет (hex, например -=ff0000 красный=- , -=00ff00 зелёный=-)
 Экранирование: \\* \\! \\_ \\^ \\| \\( \\)
 "}
-					alert(usr, help_text, "Помощь по форматированию")
+					tgui_alert(usr, help_text, "Помощь по форматированию", list("OK"))
 
 				if("hide_ckey")
 					hide_ckey = !hide_ckey
@@ -3858,12 +3665,14 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				//SPLURT EDIT BEGIN - gregnancy
 				if("virility")
-					var/viri = input(user, "Set the chance of you impregnating something (set to 0 to disable). \n(0 = minimum, 100 = maximum)", "Character Preference", virility) as num|null
-					virility = clamp(viri, 0, 100)
+					var/viri = tgui_input_number(user, "Установите шанс, с которым вы оплодотворите кого-либо (0 — отключить). \n(0 — минимум, 100 — максимум)", "Character Preference", virility, 100, 0)
+					if(!isnull(viri))
+						virility = clamp(viri, 0, 100)
 
 				if("fertility")
-					var/fert = input(user, "Set the chance of you getting impregnated (set to 0 to disable). \n(0 = minimum, 100 = maximum)", "Character Preference", fertility) as num|null
-					fertility = clamp(fert, 0, 100)
+					var/fert = tgui_input_number(user, "Установите шанс, с которым оплодотворят вас (0 — отключить). \n(0 — минимум, 100 — максимум)", "Character Preference", fertility, 100, 0)
+					if(!isnull(fert))
+						fertility = clamp(fert, 0, 100)
 
 				if("egg_shell")
 					var/shell = tgui_input_list(user, "Pick a shell for your eggs", "Character Preferences", GLOB.egg_skins)
@@ -4135,7 +3944,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				/*
 				if("underwear")
-					var/new_underwear = input(user, "Choose your character's underwear:", "Character Preference")  as null|anything in GLOB.underwear_list
+					var/new_underwear = tgui_input_list(user, "Choose your character's underwear:", "Character Preference", GLOB.underwear_list)
 					if(new_underwear)
 						underwear = new_underwear
 
@@ -4145,7 +3954,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						undie_color = sanitize_hexcolor(n_undie_color, 6)
 
 				if("undershirt")
-					var/new_undershirt = input(user, "Choose your character's undershirt:", "Character Preference") as null|anything in GLOB.undershirt_list
+					var/new_undershirt = tgui_input_list(user, "Choose your character's undershirt:", "Character Preference", GLOB.undershirt_list)
 					if(new_undershirt)
 						undershirt = new_undershirt
 
@@ -4155,7 +3964,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						shirt_color = sanitize_hexcolor(n_shirt_color, 6)
 
 				if("socks")
-					var/new_socks = input(user, "Choose your character's socks:", "Character Preference") as null|anything in GLOB.socks_list
+					var/new_socks = tgui_input_list(user, "Choose your character's socks:", "Character Preference", GLOB.socks_list)
 					if(new_socks)
 						socks = new_socks
 
@@ -4236,7 +4045,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						eye_type = pref_species.eye_type
 
 				if("custom_species")
-					var/new_species = reject_bad_name(input(user, "Выберите особую расу персонажа, если он уникален. Это будет отображаться при осмотре и сканировании здоровья. Не злоупотребляйте этим:", "Character Preference", custom_species) as null|text, TRUE)
+					var/new_species = reject_bad_name(tgui_input_text(user, "Выберите особую расу персонажа, если он уникален. Это будет отображаться при осмотре и сканировании здоровья. Не злоупотребляйте этим:", "Character Preference", custom_species, MAX_NAME_LEN), TRUE)
 					if(new_species)
 						custom_species = new_species
 					else
@@ -4633,12 +4442,12 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				//Genital code
 				if("lust_tolerance")
-					var/lust_tol = input(user, "Set how long you can last without climaxing. \n(25 = minimum, 200 = maximum.)", "Character Preference", lust_tolerance) as num|null
-					if(lust_tol)
+					var/lust_tol = tgui_input_number(user, "Установите, как долго вы можете продержаться без кульминации. \n(25 — минимум, 200 — максимум.)", "Character Preference", lust_tolerance, 200, 25)
+					if(!isnull(lust_tol))
 						lust_tolerance = clamp(lust_tol, 25, 200)
 				if("sexual_potency")
-					var/sexual_pot = input(user, "Set your sexual potency. \n(-1 = minimum, 25 = maximum.) This determines the number of times your character can orgasm before becoming impotent, use -1 for no impotency.", "Character Preference", sexual_potency) as num|null
-					if(sexual_pot)
+					var/sexual_pot = tgui_input_number(user, "Установите свою сексуальную потенцию. \n(-1 — минимум, 25 — максимум.) Определяет, сколько раз ваш персонаж может достичь оргазма до импотенции, -1 — без импотенции.", "Character Preference", clamp(sexual_potency, -1, 25), 25, -1)
+					if(!isnull(sexual_pot))
 						sexual_potency = clamp(sexual_pot, -1, 25)
 
 				if("cock_color")
@@ -4655,8 +4464,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("cock_length")
 					var/min_D = CONFIG_GET(number/penis_min_inches_prefs)
 					var/max_D = CONFIG_GET(number/penis_max_inches_prefs)
-					var/new_length = input(user, "Penis length in centimeters:\n([min_D]-[max_D])\nReminder that your sprite size will affect this.", "Character Preference") as num|null
-					if(new_length)
+					var/new_length = tgui_input_number(user, "Длина пениса в сантиметрах:\n([min_D]-[max_D])\nНапоминаем: размер вашего спрайта повлияет на это.", "Character Preference", features["cock_length"], max_D, min_D)
+					if(!isnull(new_length))
 						features["cock_length"] = clamp(round(new_length), min_D, max_D)
 
 				if("cock_shape")
@@ -4679,8 +4488,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("cock_diameter_ratio")
 					var/min_diameter_ratio = CONFIG_GET(number/diameter_ratio_min_size_prefs)
 					var/max_diameter_ratio = CONFIG_GET(number/diameter_ratio_max_size_prefs)
-					var/new_ratio = input(user, "Penis diameter ratio:\n([min_diameter_ratio]-[max_diameter_ratio])\nReminder that your sprite size will affect this.", "Character Preference") as num|null
-					if(new_ratio)
+					var/new_ratio = tgui_input_number(user, "Коэффициент диаметра пениса:\n([min_diameter_ratio]-[max_diameter_ratio])\nНапоминаем: размер вашего спрайта повлияет на это.", "Character Preference", clamp(features["cock_diameter_ratio"], min_diameter_ratio, max_diameter_ratio), max_diameter_ratio, min_diameter_ratio)
+					if(!isnull(new_ratio))
 						features["cock_diameter_ratio"] = clamp(round(new_ratio, 0.01), min_diameter_ratio, max_diameter_ratio)
 
 				if("cock_visibility")
@@ -4724,6 +4533,20 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 					new_fluid = tgui_input_list(user, "Balls Fluid", "Character Preference", full_options)
 					if(new_fluid)
 						features["balls_fluid"] = new_fluid.type
+
+				if("balls_cum_max")
+					var/new_max = tgui_input_number(user, "Testicles Maximum Cum Output:\n(1 - 150)(Default depends on size)\n(Cancel to restore defaults)", "Character Preference", features["balls_cum_max"], 150, 1)
+					if(new_max)
+						features["balls_cum_max"] = clamp(round(new_max), 1, 150)
+					else
+						features -= "balls_cum_max"
+
+				if("balls_cum_rate")
+					var/new_rate = tgui_input_number(user, "Testicles Cum Restoration Rate:\n(0.1 - 20)(Default = [CUM_RATE])\n(Cancel to restore defaults)", "Character Preference", features["balls_cum_rate"], 20, 0.1)
+					if(new_rate)
+						features["balls_cum_rate"] = clamp(round(new_rate, 0.1), 0.1, 20)
+					else
+						features["balls_cum_rate"] = CUM_RATE
 
 				if("breasts_size")
 					var/new_size = tgui_input_list(user, "Breast Size", "Character Preference", CONFIG_GET(keyed_list/breasts_cups_prefs))
@@ -4847,15 +4670,15 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("belly_size")
 					var/min_belly = CONFIG_GET(number/belly_min_size_prefs)
 					var/max_belly = CONFIG_GET(number/belly_max_size_prefs)
-					var/new_bellysize = input(user, "Belly size :\n([min_belly]-[max_belly])", "Character Preference") as num|null
+					var/new_bellysize = tgui_input_number(user, "Размер живота:\n([min_belly]-[max_belly])", "Character Preference", features["belly_size"], max_belly, min_belly)
 					if(!isnull(new_bellysize))
 						features["belly_size"] = clamp(new_bellysize, min_belly, max_belly)
 
 				if("butt_size")
 					var/min_B = CONFIG_GET(number/butt_min_size_prefs)
 					var/max_B = CONFIG_GET(number/butt_max_size_prefs)
-					var/new_length = input(user, "Butt size:\n([min_B]-[max_B])", "Character Preference") as num|null
-					if(new_length)
+					var/new_length = tgui_input_number(user, "Размер ягодиц:\n([min_B]-[max_B])", "Character Preference", features["butt_size"], max_B, min_B)
+					if(!isnull(new_length))
 						features["butt_size"] = clamp(round(new_length), min_B, max_B)
 
 				if("butt_visibility")
@@ -4875,14 +4698,14 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("cock_max_length")
 					var/max_B = CONFIG_GET(number/penis_max_inches_prefs)
-					var/new_size = input(user, "Max size:\n([features["cock_length"]]-[max_B])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Максимальный размер:\n([features["cock_length"]]-[max_B]) (0 — отключено)", "Character Preference", min(features["cock_max_length"] || 0, max_B), max_B, 0)
 					if(new_size)
 						features["cock_max_length"] = clamp(round(new_size), features["cock_length"], max_B)
 					else
 						features -= "cock_max_length"
 
 				if("balls_max_size")
-					var/new_size = input(user, "Max size:\n([BALLS_SIZE_MIN]-[BALLS_SIZE_MAX])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Максимальный размер:\n([BALLS_SIZE_MIN]-[BALLS_SIZE_MAX]) (0 — отключено)", "Character Preference", min(features["balls_max_size"] || 0, BALLS_SIZE_MAX), BALLS_SIZE_MAX, 0)
 					if(new_size)
 						features["balls_max_size"] = clamp(round(new_size), BALLS_SIZE_MIN, BALLS_SIZE_MAX)
 					else
@@ -4897,7 +4720,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("belly_max_size")
 					var/max_B = CONFIG_GET(number/belly_max_size_prefs)
-					var/new_size = input(user, "Max size:\n([features["belly_size"]]-[max_B])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Максимальный размер:\n([features["belly_size"]]-[max_B]) (0 — отключено)", "Character Preference", min(features["belly_max_size"] || 0, max_B), max_B, 0)
 					if(new_size)
 						features["belly_max_size"] = clamp(round(new_size), features["belly_size"], max_B)
 					else
@@ -4905,7 +4728,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("butt_max_size")
 					var/max_B = CONFIG_GET(number/butt_max_size_prefs)
-					var/new_size = input(user, "Max size:\n([features["butt_size"]]-[max_B])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Максимальный размер:\n([features["butt_size"]]-[max_B]) (0 — отключено)", "Character Preference", min(features["butt_max_size"] || 0, max_B), max_B, 0)
 					if(new_size)
 						features["butt_max_size"] = clamp(round(new_size), features["butt_size"], max_B)
 					else
@@ -4913,14 +4736,14 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("cock_min_length")
 					var/min_B = CONFIG_GET(number/penis_min_inches_prefs)
-					var/new_size = input(user, "Min size:\n([min_B]-[features["cock_length"]])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Минимальный размер:\n([min_B]-[features["cock_length"]]) (0 — отключено)", "Character Preference", min(features["cock_min_length"] || 0, features["cock_length"]), features["cock_length"], 0)
 					if(new_size)
 						features["cock_min_length"] = clamp(round(new_size), min_B, features["cock_length"])
 					else
 						features -= "cock_min_length"
 
 				if("balls_min_size")
-					var/new_size = input(user, "Min size:\n([BALLS_SIZE_MIN]-[BALLS_SIZE_MAX])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Минимальный размер:\n([BALLS_SIZE_MIN]-[BALLS_SIZE_MAX]) (0 — отключено)", "Character Preference", min(features["balls_min_size"] || 0, BALLS_SIZE_MAX), BALLS_SIZE_MAX, 0)
 					if(new_size)
 						features["balls_min_size"] = clamp(round(new_size), BALLS_SIZE_MIN, BALLS_SIZE_MAX)
 					else
@@ -4935,7 +4758,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("belly_min_size")
 					var/min_B = CONFIG_GET(number/belly_min_size_prefs)
-					var/new_size = input(user, "Min size:\n([min_B]-[features["belly_size"]])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Минимальный размер:\n([min_B]-[features["belly_size"]]) (0 — отключено)", "Character Preference", min(features["belly_min_size"] || 0, features["belly_size"]), features["belly_size"], 0)
 					if(new_size)
 						features["belly_min_size"] = clamp(round(new_size), min_B, features["belly_size"])
 					else
@@ -4943,7 +4766,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("butt_min_size")
 					var/min_B = CONFIG_GET(number/butt_min_size_prefs)
-					var/new_size = input(user, "Min size:\n([min_B]-[features["butt_size"]])(0 = disabled)", "Character Preference") as num|null
+					var/new_size = tgui_input_number(user, "Минимальный размер:\n([min_B]-[features["butt_size"]]) (0 — отключено)", "Character Preference", min(features["butt_min_size"] || 0, features["butt_size"]), features["butt_size"], 0)
 					if(new_size)
 						features["butt_min_size"] = clamp(round(new_size), min_B, features["butt_size"])
 					else
@@ -5057,7 +4880,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 					if(pickedPDASkin)
 						pda_skin = pickedPDASkin
 				if("pda_ringtone")
-					var/pickedPDARingtone = reject_bad_name(input(user, "Выберите рингтон своего КПК.", "Character Preference", pda_ringtone) as null|text, TRUE)
+					var/pickedPDARingtone = reject_bad_name(tgui_input_text(user, "Выберите рингтон своего КПК.", "Character Preference", pda_ringtone, MAX_MESSAGE_LEN), TRUE)
 					if(pickedPDARingtone)
 						pda_ringtone = pickedPDARingtone
 				if("pda_theme")
@@ -5071,7 +4894,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 							picked_lawset = null
 						silicon_lawset = picked_lawset
 				if ("max_chat_length")
-					var/desiredlength = input(user, "Choose the max character length of shown Runechat messages. Valid range is 1 to [CHAT_MESSAGE_MAX_LENGTH] (default: [initial(max_chat_length)]))", "Character Preference", max_chat_length)  as null|num
+					var/desiredlength = tgui_input_number(user, "Выберите максимальную длину отображаемых сообщений Runechat. Допустимо от 1 до [CHAT_MESSAGE_MAX_LENGTH] (по умолчанию: [initial(max_chat_length)]))", "Character Preference", max_chat_length, CHAT_MESSAGE_MAX_LENGTH, 1)
 					if (!isnull(desiredlength))
 						max_chat_length = clamp(desiredlength, 1, CHAT_MESSAGE_MAX_LENGTH)
 				//Sandstorm changes begin
@@ -5105,8 +4928,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 					gender = chosengender
 
 				if("body_size")
-					var/new_body_size = input(user, "Choose your desired sprite size: ([CONFIG_GET(number/body_size_min)*100]-[CONFIG_GET(number/body_size_max)*100]%)\nWarning: This may make your character look distorted. Additionally, any size affects speed and max health", "Character Preference", features["body_size"]*100) as num|null
-					if(new_body_size)
+					var/new_body_size = tgui_input_number(user, "Выберите желаемый размер спрайта: ([CONFIG_GET(number/body_size_min)*100]-[CONFIG_GET(number/body_size_max)*100]%)\nВнимание: персонаж может выглядеть искажённо. Размер также влияет на скорость и максимальное здоровье", "Character Preference", clamp(features["body_size"]*100, CONFIG_GET(number/body_size_min)*100, CONFIG_GET(number/body_size_max)*100), CONFIG_GET(number/body_size_max)*100, CONFIG_GET(number/body_size_min)*100)
+					if(!isnull(new_body_size))
 						features["body_size"] = clamp(new_body_size * 0.01, CONFIG_GET(number/body_size_min), CONFIG_GET(number/body_size_max))
 
 				if("toggle_fuzzy")
@@ -5130,8 +4953,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("normalized_size")
 					var/max_size = 	min(CONFIG_GET(number/body_size_max), 1.2)	// Магическая цифра (предел MOB_SIZE_HUMAN по proc/adjust_mobsize)
 					var/min_size =	max(CONFIG_GET(number/body_size_min), 0.81)	// Магическая цифра (предел MOB_SIZE_HUMAN по proc/adjust_mobsize)
-					var/new_normialzed_size = input(user, "Choose your desired normalized size: ([min_size * 100]-[max_size * 100]%)\nUsed with normalizer stuff", "Character Preference", features["normalized_size"]*100) as num|null
-					if(new_normialzed_size)
+					var/new_normialzed_size = tgui_input_number(user, "Выберите желаемый нормализованный размер: ([min_size * 100]-[max_size * 100]%)\nИспользуется нормализатором", "Character Preference", clamp(features["normalized_size"]*100, min_size*100, max_size*100), max_size*100, min_size*100)
+					if(!isnull(new_normialzed_size))
 						features["normalized_size"] = clamp(new_normialzed_size * 0.01, min_size, max_size)
 
 				// Выбор смеха
@@ -5195,19 +5018,19 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 				if("barkspeed")
 					var/datum/bark/B = GLOB.bark_list[bark_id]
-					var/borkset = input(user, "Выберите желаемую скорость речи (Значение выше – медленная речь, ниже – быстрая). Мин: [initial(B.minspeed)]. Макс: [initial(B.maxspeed)]", "Настройка персонажа") as null|num
+					var/borkset = tgui_input_number(user, "Выберите желаемую скорость речи (Значение выше – медленная речь, ниже – быстрая). Мин: [initial(B.minspeed)]. Макс: [initial(B.maxspeed)]", "Настройка персонажа", clamp(bark_speed, initial(B.minspeed), initial(B.maxspeed)), initial(B.maxspeed), initial(B.minspeed))
 					if(!isnull(borkset))
 						bark_speed = round(clamp(borkset, initial(B.minspeed), initial(B.maxspeed)), 1)
 
 				if("barkpitch")
 					var/datum/bark/B = GLOB.bark_list[bark_id]
-					var/borkset = input(user, "Выберите желаемую высоту тона голоса. Мин: [initial(B.minpitch)].\nМакс: [initial(B.maxpitch)]", "Настройка персонажа") as null|num
+					var/borkset = tgui_input_number(user, "Выберите желаемую высоту тона голоса. Мин: [initial(B.minpitch)].\nМакс: [initial(B.maxpitch)]", "Настройка персонажа", clamp(bark_pitch, initial(B.minpitch), initial(B.maxpitch)), initial(B.maxpitch), initial(B.minpitch))
 					if(!isnull(borkset))
 						bark_pitch = clamp(borkset, initial(B.minpitch), initial(B.maxpitch))
 
 				if("barkvary")
 					var/datum/bark/B = GLOB.bark_list[bark_id]
-					var/borkset = input(user, "Выберите желаемую случайность звучания речи. Мин: [initial(B.minvariance)].\nМакс: [initial(B.maxvariance)]", "Настройка персонажа") as null|num
+					var/borkset = tgui_input_number(user, "Выберите желаемую случайность звучания речи. Мин: [initial(B.minvariance)].\nМакс: [initial(B.maxvariance)]", "Настройка персонажа", clamp(bark_variance, initial(B.minvariance), initial(B.maxvariance)), initial(B.maxvariance), initial(B.minvariance))
 					if(!isnull(borkset))
 						bark_variance = clamp(borkset, initial(B.minvariance), initial(B.maxvariance))
 
@@ -5554,7 +5377,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("no_tetris_storage")
 					no_tetris_storage = !no_tetris_storage
 				if ("screenshake")
-					var/desiredshake = input(user, "Set the amount of screenshake you want. \n(0 = disabled, 100 = full, no maximum (at your own risk).)", "Character Preference", screenshake)  as null|num
+					var/desiredshake = tgui_input_number(user, "Установите желаемую тряску экрана. \n(0 — отключено, 100 — полная, максимума нет (на ваш риск).)", "Character Preference", screenshake, INFINITY, 0)
 					if (!isnull(desiredshake))
 						screenshake = desiredshake
 				if("damagescreenshake")
@@ -5568,7 +5391,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						else
 							damagescreenshake = 1
 				if ("recoil_screenshake")
-					var/desiredshake = input(user, "Set the amount of recoil screenshake/push you want. \n(0 = disabled, 100 = full, no maximum (at your own risk).)", "Character Preference", screenshake)  as null|num
+					var/desiredshake = tgui_input_number(user, "Установите желаемую тряску и толчок от отдачи. \n(0 — отключено, 100 — полная, максимума нет (на ваш риск).)", "Character Preference", recoil_screenshake, INFINITY, 0)
 					if (!isnull(desiredshake))
 						recoil_screenshake = desiredshake
 				if("nameless")
@@ -5939,35 +5762,13 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 					ambientocclusion = !ambientocclusion
 					if(parent?.mob?.hud_used && parent.screen?.len)
 						var/datum/hud/H = parent.mob.hud_used
-						var/atom/movable/screen/plane_master/G = H.plane_masters["[GAME_PLANE]"]
-						var/atom/movable/screen/plane_master/A = H.plane_masters["[ABOVE_WALL_PLANE]"]
-						var/atom/movable/screen/plane_master/W = H.plane_masters["[WALL_PLANE]"]
-						var/atom/movable/screen/plane_master/F = H.plane_masters["[FLOOR_PLANE]"]
-						var/atom/movable/screen/plane_master/L = H.plane_masters["[LIGHTING_PLANE]"]
-						var/atom/movable/screen/plane_master/C = H.plane_masters["[CHAT_PLANE]"]
-						G?.backdrop(parent.mob)
-						A?.backdrop(parent.mob)
-						W?.backdrop(parent.mob)
-						F?.backdrop(parent.mob)
-						L?.backdrop(parent.mob)
-						C?.backdrop(parent.mob)
+						H.refresh_plane_backdrops(parent.mob, list(GAME_PLANE, ABOVE_WALL_PLANE, WALL_PLANE, FLOOR_PLANE, LIGHTING_PLANE, CHAT_PLANE))
 
 				if("lighting_blur")
 					lighting_blur = (lighting_blur + 1) % (LIGHTING_BLUR_MAX + 1)
 					if(parent?.mob?.hud_used && parent.screen?.len)
 						var/datum/hud/H = parent.mob.hud_used
-						var/atom/movable/screen/plane_master/L = H.plane_masters["[LIGHTING_PLANE]"]
-						var/atom/movable/screen/plane_master/G = H.plane_masters["[GAME_PLANE]"]
-						var/atom/movable/screen/plane_master/A = H.plane_masters["[ABOVE_WALL_PLANE]"]
-						var/atom/movable/screen/plane_master/W = H.plane_masters["[WALL_PLANE]"]
-						var/atom/movable/screen/plane_master/F = H.plane_masters["[FLOOR_PLANE]"]
-						var/atom/movable/screen/plane_master/E = H.plane_masters["[EMISSIVE_PLANE]"]
-						L?.backdrop(parent.mob)
-						G?.backdrop(parent.mob)
-						A?.backdrop(parent.mob)
-						W?.backdrop(parent.mob)
-						F?.backdrop(parent.mob)
-						E?.backdrop(parent.mob)
+						H.refresh_plane_backdrops(parent.mob, list(LIGHTING_PLANE, GAME_PLANE, ABOVE_WALL_PLANE, WALL_PLANE, FLOOR_PLANE, EMISSIVE_PLANE, LIGHTING_LAMPS_PLANE, FLOOR_LIGHTING_LAMPS_PLANE, LIGHTING_LAMPS_SELFGLOW, FLOOR_LIGHTING_LAMPS_SELFGLOW, LIGHTING_LAMPS_GLARE, FLOOR_LIGHTING_LAMPS_GLARE, LIGHTING_EXPOSURE_PLANE, O_LIGHTING_VISUAL_PLANE))
 
 				if("auto_fit_viewport")
 					auto_fit_viewport = !auto_fit_viewport
@@ -6060,8 +5861,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				if("export_slot")
 					var/savefile/S = save_character(export = TRUE)
 					if(istype(S, /savefile))
-						user.client.Export(S)
 						user.client.local_storage_name_read = FALSE
+						user.client.Export(S)
 						tgui_alert_async(user, "Successfully saved character slot")
 					else
 						tgui_alert_async(user, "Failed saving character slot")
@@ -6081,8 +5882,8 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 						return
 
 				if("delete_local_copy")
-					user.client.clear_export()
 					user.client.local_storage_name_read = FALSE
+					user.client.clear_export()
 					tgui_alert_async(user, "Local save data erased.")
 
 				if("give_slot")
@@ -6351,6 +6152,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 				var/color_to_change = tgui_input_list(user, "Polychromic options", "Recolor [name]", color_options)
 				if(color_to_change)
 					var/color_index = text2num(copytext(color_to_change, 7))
+					G.pad_polychromic_colors(user_gear)
 					var/current_color = user_gear[LOADOUT_COLOR][color_index]
 					if(!istext(current_color))
 						current_color = "#FFFFFF"
@@ -6362,13 +6164,13 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 			//renaming is only allowed if it has the flag for it
 			if(href_list["loadout_rename"] && (G.loadout_flags & LOADOUT_CAN_NAME))
-				var/new_name = stripped_input(user, "Enter new name for item. Maximum [MAX_NAME_LEN] characters.", "Loadout Item Naming", null,  MAX_NAME_LEN)
+				var/new_name = tgui_input_text(user, "Введите новое имя предмета. Максимум [MAX_NAME_LEN] символов.", "Loadout Item Naming", null, MAX_NAME_LEN, FALSE, TRUE)
 				if(new_name)
 					user_gear[LOADOUT_CUSTOM_NAME] = new_name
 
 			//redescribing is only allowed if it has the flag for it
 			if(href_list["loadout_redescribe"] && (G.loadout_flags & LOADOUT_CAN_DESCRIPTION)) //redescribe isnt a real word but i can't think of the right term to use
-				var/new_description = stripped_input(user, "Enter new description for item. Maximum 500 characters.", "Loadout Item Redescribing", null, 500)
+				var/new_description = tgui_input_text(user, "Введите новое описание предмета. Максимум 500 символов.", "Loadout Item Redescribing", null, 500, TRUE, TRUE)
 				if(new_description)
 					user_gear[LOADOUT_CUSTOM_DESCRIPTION] = new_description
 			// BLUEMOON ADD START - выбор вещей из лодаута как family heirloom
@@ -6400,12 +6202,12 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 
 			//for collars with tagnames
 			if(href_list["loadout_tagname"])
-				var/new_tagname = stripped_input(user, "Would you like to change the name on the tag?", "Name your new pet", null, MAX_NAME_LEN)
+				var/new_tagname = tgui_input_text(user, "Хотите изменить имя на бирке?", "Name your new pet", null, MAX_NAME_LEN, FALSE, TRUE)
 				if(new_tagname)
 					user_gear["loadout_custom_tagname"] = new_tagname
 			if(href_list["loadout_examtooltip"])
 				var/defaultinput = (islist(user_gear["loadout_examtooltip"])) ? user_gear["loadout_examtooltip"][1] : null
-				var/examtooltip_usrinput = stripped_input(user, "Это описание предмета будет видно при осмотре персонажа, носящего предмет. Cancel - очистить.", "Дополнительное описание", defaultinput, MAX_MESSAGE_LEN)
+				var/examtooltip_usrinput = tgui_input_text(user, "Это описание предмета будет видно при осмотре персонажа, носящего предмет. Cancel - очистить.", "Дополнительное описание", defaultinput, MAX_MESSAGE_LEN, TRUE, TRUE)
 				if(examtooltip_usrinput)
 					user_gear["loadout_examtooltip"] = list(examtooltip_usrinput, TRUE)
 					examtooltip_usrinput = alert(usr, "Оставлять описание даже после снятия предмета с персонажа?", "Постоянное описание", "Да", "Нет")
@@ -6645,7 +6447,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 	if(!namedata)
 		return
 
-	var/raw_name = input(user, "Выберите своему персонажу [namedata["qdesc"]]:", "Настройка персонажа") as text|null
+	var/raw_name = tgui_input_text(user, "Выберите своему персонажу [namedata["qdesc"]]:", "Настройка персонажа", custom_names[name_id], MAX_NAME_LEN)
 	if(!raw_name)
 		if(namedata["allow_null"])
 			custom_names[name_id] = get_default_name(name_id)
@@ -6909,7 +6711,7 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 			links_list[link_index] = headshot_link
 
 /datum/preferences/proc/get_headshot_link(mob/user, old_link)
-	var/usr_input = input(user, "Input the image link: (For Discord links, try putting the file's type at the end of the link, after the '&'. for example '&.jpg/.png/.jpeg/.gif/.webm/.mp4')", "Headshot Image", old_link) as text|null
+	var/usr_input = tgui_input_text(user, "Вставьте ссылку на изображение: (для ссылок Discord попробуйте дописать тип файла в конец ссылки после '&', например '&.jpg/.png/.jpeg/.gif/.webm/.mp4')", "Headshot Image", old_link, HEADSHOT_LINK_MAX_LENGTH)
 	if(isnull(usr_input))
 		return ACTION_HEADSHOT_LINK_NOOP
 
@@ -6936,6 +6738,32 @@ GLOBAL_LIST_EMPTY(preferences_datums)
 	if(findtext(link, video_regex))
 		return "<video src='[link]' autoplay loop muted playsinline style='border: 1px solid black; object-fit: contain;' width='[width]' height='[height]'></video>"
 	return "<img src='[link]' referrerpolicy='no-referrer' style='border: 1px solid black; object-fit: contain;' width='[width]' height='[height]'>"
+
+/datum/preferences/proc/get_ass_photo_markup()
+	var/ass_photo_label = use_modern_translations ? get_modern_text("ass_photo", src) : "Butt photo"
+	var/set_ass_photo_label = use_modern_translations ? get_modern_text("set_ass_photo", src) : "Set photo"
+	var/list/markup = list()
+	markup += "<h2>[ass_photo_label]</h2>"
+	markup += "<a href='?_src_=prefs;preference=ass_photo'><b>[set_ass_photo_label]</b></a>"
+	if(features["ass_photo"])
+		markup += " <a href='?_src_=prefs;preference=ass_photo;clear=1'>\[X\]</a><br>"
+		markup += headshot_preview_html(features["ass_photo"])
+	else
+		markup += "<br>\[...\]"
+	return markup.Join()
+
+/datum/preferences/proc/set_ass_photo_link(mob/user)
+	var/ass_photo_link = get_headshot_link(user, features["ass_photo"])
+	switch(ass_photo_link)
+		if(ACTION_HEADSHOT_LINK_REMOVE)
+			features["ass_photo"] = ""
+			return
+		if(ACTION_HEADSHOT_LINK_NOOP)
+			return
+		else
+			if(features["ass_photo"] == ass_photo_link)
+				return
+			features["ass_photo"] = ass_photo_link
 
 /datum/preferences/proc/mob_size_name_to_num(body_weight_name)
 	switch(body_weight_name)
