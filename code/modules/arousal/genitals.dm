@@ -539,21 +539,26 @@ GLOBAL_LIST_EMPTY(genital_slot_dna_features)
 				dna.species.update_overlay_by_key(mutant_string, src, genital_overlay)
 				LAZYADD(fully_exposed, genital_overlay)
 				if(has_emissive_part(dna.features, G.slot))
-					LAZYADD(fully_exposed, emissive_copy(genital_overlay))
+					var/mutable_appearance/genital_emissive = emissive_copy(genital_overlay, offset_spokesman = src)
+					LAZYADD(fully_exposed, genital_emissive)
 				// BLUEMOON ADD
 				if(nipples_overlay)
 					nipples_overlay.layer = -GENITALS_EXPOSED_LAYER
 					LAZYADD(fully_exposed, nipples_overlay)
+					if(has_emissive_part(dna.features, G.slot))
+						LAZYADD(fully_exposed, emissive_copy(nipples_overlay))
 			else
 				genital_overlay.layer = -layers_num[layer]
 				standing += genital_overlay
 				if(has_emissive_part(dna.features, G.slot))
-					standing += emissive_copy(genital_overlay)
+					var/mutable_appearance/genital_emissive = emissive_copy(genital_overlay, offset_spokesman = src)
+					standing += genital_emissive
 				// BLUEMOON ADD
 				if(nipples_overlay)
 					nipples_overlay.layer = -layers_num[layer]
 					standing += nipples_overlay
-					standing += emissive_copy(genital_overlay)
+					if(has_emissive_part(dna.features, G.slot))
+						standing += emissive_copy(nipples_overlay)
 
 		if(LAZYLEN(standing))
 			overlays_standing[layers_num[layer]] = standing
